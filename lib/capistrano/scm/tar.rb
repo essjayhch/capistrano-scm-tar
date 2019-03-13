@@ -9,11 +9,23 @@ module Capistrano
         end
 
         def self.authentication
+          return unless ENV['http_user']
+          return [ENV['http_user']] unless ENV['http_password']
           [ENV['http_user'], ENV['http_password']]
         end
 
         def self.revision
           ::File.basename(ENV['package_uri'] || ENV['package']).split('.')[0]
+        end
+
+        def self.open_uri_auth
+          return {} unless authentication
+          { http_basic_authentication: authenitcation }
+        end
+
+        def self.curl_auth
+          return '' unless authentication
+          "-u #{authentication.join(':')}"
         end
 
         def self.find_package
@@ -22,7 +34,7 @@ module Capistrano
           require 'tempfile'
           tmp = ::Tempfile.new revision(ENV['package_uri'])
           tmp.binmode
-          tmp.write(open(ENV['package_uri'], http_basic_authentication: authentication).read)
+          tmp.write(open(ENV['package_uri'], open_uri_auth).read)
           tmp
         end
 
@@ -50,7 +62,7 @@ module Capistrano
                 tmp = capture 'mktemp'
 
                 if ENV['remote'] && ENV['package_uri']
-                  execute :curl, '-sS', ENV['package_uri'], '-o', tmp, '>/dev/null'
+                  execute :curl, '-sS', ::Capistrano::SCM::Tar::Plugin.curl_auth, ENV['package_uri'], '-o', tmp
                 else
                   ::Capistrano::SCM::Tar::Plugin.with_package_file do |pkg|
                     upload! pkg.path, tmp
